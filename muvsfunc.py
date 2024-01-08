@@ -5985,15 +5985,15 @@ class rescale:
         }
 
     def Upscale(clip: vs.VideoNode, width: int, height: int, kernel: str = "bicubic", taps: int = 3, b: float = 0.0, c: float = 0.5,
-        src_left: float = None, src_top: float = None, src_width: float = None, src_height: float = None, blur=1.0) -> vs.VideoNode:
-        notBlur = blur == 1.0
+        src_left: float = None, src_top: float = None, src_width: float = None, src_height: float = None, src_blur=1.0) -> vs.VideoNode:
+        notBlur = src_blur == 1.0
         upscaler = getattr(core.resize, kernel.capitalize()) if notBlur else core.fmtc.resample
         if kernel.lower() == "bicubic":
             upscaler = functools.partial(upscaler, filter_param_a=b, filter_param_b=c) if notBlur else functools.partial(upscaler, a1=b, a2=c)
         elif kernel.lower() == "lanczos":
             upscaler = functools.partial(upscaler, filter_param_a=taps) if notBlur else functools.partial(upscaler, taps=taps)
 
-        return upscaler(clip, width, height, src_left=src_left, src_top=src_top, src_width=src_width, src_height=src_height) if notBlur else upscaler(clip, width, height, sx=src_left, sy=src_top, sw=src_width, sh=src_height, fv=1/blur, fh=1/blur, kernel=kernel)
+        return upscaler(clip, width, height, src_left=src_left, src_top=src_top, src_width=src_width, src_height=src_height) if notBlur else upscaler(clip, width, height, sx=src_left, sy=src_top, sw=src_width, sh=src_height, fv=src_blur, fh=src_blur, kernel=kernel)
 
     class Rescaler:
         def __init__(self, kernel: str = "bicubic", taps: int = 3, b: float = 0.0, c: float = 0.5, upscaler: Callable = None):
@@ -6010,36 +6010,36 @@ class rescale:
             base_height = clip.height if isinstance(src_height, float) else None
             return self.rescale(clip, src_height, base_height, upscaler)
 
-        def rescale(self, clip: vs.VideoNode, src_height: Union[int, float], base_height: Optional[int] = None, upscaler: Optional[Callable] = None, blur=1.0) -> vs.VideoNode:
+        def rescale(self, clip: vs.VideoNode, src_height: Union[int, float], base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur=1.0) -> vs.VideoNode:
             W, H = clip.width, clip.height
             src_width = W / H * src_height
-            descaled = self.descale(clip, src_width, src_height, base_height, blur)
-            rescaled = self.upscale(descaled, W, H, upscaler, blur)
+            descaled = self.descale(clip, src_width, src_height, base_height, src_blur)
+            rescaled = self.upscale(descaled, W, H, upscaler, src_blur)
             return rescaled
 
-        def rescale_pro(self, clip: vs.VideoNode, src_width: Union[int, float] = None, src_height: Union[int, float] = None, base_width: Optional[int] = None, base_height: Optional[int] = None, upscaler: Optional[Callable] = None, blur=1.0) -> vs.VideoNode:
+        def rescale_pro(self, clip: vs.VideoNode, src_width: Union[int, float] = None, src_height: Union[int, float] = None, base_width: Optional[int] = None, base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur=1.0) -> vs.VideoNode:
 
             if ((src_height is None) and (src_width is None)):
                 raise TypeError("At least one of the 'src_height' and 'src_width' must be set.")
 
-            descaled = self.descale_pro(clip, src_width, src_height, base_width, base_height, blur)
-            rescaled = self.upscale(descaled, clip.width, clip.height, upscaler, blur)
+            descaled = self.descale_pro(clip, src_width, src_height, base_width, base_height, src_blur)
+            rescaled = self.upscale(descaled, clip.width, clip.height, upscaler, src_blur)
             return rescaled
 
-        def descale(self, clip: vs.VideoNode, width: Union[int, float], height: Union[int, float], base_height: int = None, blur=1.0):
+        def descale(self, clip: vs.VideoNode, width: Union[int, float], height: Union[int, float], base_height: int = None, src_blur=1.0):
             W, H = clip.width, clip.height
             self.descale_args = rescale._get_descale_args(W, H, width, height, base_height)
             kwargs = self.descale_args.copy()
 
             descaler = getattr(core.descale, 'De'+self.kernel.lower())
             if self.kernel.lower() == "bicubic":
-                return descaler(clip, b=self.b, c=self.c, blur=blur, **kwargs)
+                return descaler(clip, b=self.b, c=self.c, blur=1/src_blur, **kwargs)
             elif self.kernel.lower() == "lanczos":
-                return descaler(clip, taps=self.taps, blur=blur, **kwargs)
+                return descaler(clip, taps=self.taps, blur=1/src_blur, **kwargs)
             else:
-                return descaler(clip, blur=blur, **kwargs)
+                return descaler(clip, blur=1/src_blur, **kwargs)
 
-        def descale_pro(self, clip: vs.VideoNode, width: Union[int, float] = None, height: Union[int, float] = None, base_width: int = None, base_height: int = None, blur=1.0):
+        def descale_pro(self, clip: vs.VideoNode, width: Union[int, float] = None, height: Union[int, float] = None, base_width: int = None, base_height: int = None, src_blur=1.0):
             if width is None:
                 width = clip.width
             if height is None:
@@ -6049,19 +6049,19 @@ class rescale:
 
             descaler = getattr(core.descale, 'De'+self.kernel.lower())
             if self.kernel.lower() == "bicubic":
-                return descaler(clip, b=self.b, c=self.c, blur=blur, **kwargs)
+                return descaler(clip, b=self.b, c=self.c, blur=1/src_blur, **kwargs)
             elif self.kernel.lower() == "lanczos":
-                return descaler(clip, taps=self.taps, blur=blur, **kwargs)
+                return descaler(clip, taps=self.taps, blur=1/src_blur, **kwargs)
             else:
-                return descaler(clip, blur=blur, **kwargs)
+                return descaler(clip, blur=1/src_blur, **kwargs)
             
-        def upscale(self, clip: vs.VideoNode, width: int, height: int, upscaler: Optional[Callable] = None, blur=1.0) -> vs.VideoNode:
+        def upscale(self, clip: vs.VideoNode, width: int, height: int, upscaler: Optional[Callable] = None, src_blur=1.0) -> vs.VideoNode:
             from inspect import signature
             kwargs = self.descale_args.copy()
             kwargs.pop("width")
             kwargs.pop("height")
             if upscaler is None:
-                return rescale.Upscale(clip, width, height, kernel=self.kernel, taps=self.taps, b=self.b, c=self.c, blur=blur, **kwargs)
+                return rescale.Upscale(clip, width, height, kernel=self.kernel, taps=self.taps, b=self.b, c=self.c, src_blur=src_blur, **kwargs)
             else:
                 param_dict = signature(upscaler).parameters
                 if all(key in param_dict for key in ("src_left", "src_top", "src_width", "src_height")):
@@ -6096,7 +6096,7 @@ class rescale:
 
 def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescale.Rescaler]] = [rescale.Bicubic(0, 0.5)],
     src_heights: Union[int, float, Sequence[int], Sequence[float]] = tuple(range(500, 1001)), base_height: int = None,
-    crop_size: int = 5, rt_eval: bool = True, dark: bool = True, ex_thr: float = 0.015, filename: str = None, vertical_only: bool = False, blurs = [1.0,]) -> vs.VideoNode:
+    crop_size: int = 5, rt_eval: bool = True, dark: bool = True, ex_thr: float = 0.015, filename: str = None, vertical_only: bool = False, src_blurs = [1.0]) -> vs.VideoNode:
     """Find the native resolution(s) of upscaled material (mostly anime)
 
     Modifyed from:
@@ -6220,25 +6220,25 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
     if base_height is not None:
         assert base_height > max(src_heights)
 
-    if isinstance(blurs, int) or isinstance(blurs, float):
-        blurs = (blurs,)
-    if not isinstance(blurs, tuple):
-        blurs = tuple(blurs)
+    if isinstance(src_blurs, int) or isinstance(src_blurs, float):
+        src_blurs = (src_blurs,)
+    if not isinstance(src_blurs, tuple):
+        src_blurs = tuple(src_blurs)
 
     if clip.num_frames > 1:
         mode = Mode.MULTI_FRAME
-        assert len(src_heights) == 1 and len(rescalers) == 1 and len(blurs) == 1, "1 src_height and 1 rescaler should be passed for verify mode."
+        assert len(src_heights) == 1 and len(rescalers) == 1 and len(src_blurs) == 1, "1 src_height and 1 rescaler should be passed for verify mode."
     elif len(src_heights) > 1:
         mode = Mode.MULTI_HEIGHT
-        assert clip.num_frames == 1 and len(rescalers) == 1 and len(blurs) == 1,  "1-frame clip and 1 rescaler should be passed for multi heights mode."
+        assert clip.num_frames == 1 and len(rescalers) == 1 and len(src_blurs) == 1,  "1-frame clip and 1 rescaler should be passed for multi heights mode."
     elif len(rescalers) > 1:
         mode = Mode.MULTI_KERNEL
-        assert clip.num_frames == 1 and len(src_heights) == 1 and len(blurs) == 1, "1-frame clip and 1 src_height shoule be passed for multi kernels mode."
-    elif len(blurs) > 1:
+        assert clip.num_frames == 1 and len(src_heights) == 1 and len(src_blurs) == 1, "1-frame clip and 1 src_height shoule be passed for multi kernels mode."
+    elif len(src_blurs) > 1:
         mode = Mode.MULTI_BLUR
         assert clip.num_frames == 1 and len(src_heights) == 1 and len(rescalers) == 1, "1-frame clip and 1 src_height and 1 rescaler shoule be passed for multi blur mode."
 
-    def output_statistics(clip: vs.VideoNode, rescalers: List[rescale.Rescaler], src_heights: Sequence[int], mode: Mode, dark: bool, blurs: Sequence[float]) -> vs.VideoNode:
+    def output_statistics(clip: vs.VideoNode, rescalers: List[rescale.Rescaler], src_heights: Sequence[int], mode: Mode, dark: bool, src_blurs: Sequence[float]) -> vs.VideoNode:
         data = [0] * clip.num_frames
         remaining_frames = [1] * clip.num_frames # mutable
 
@@ -6250,13 +6250,13 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
             remaining_frames[n] = 0
 
             if sum(remaining_frames) == 0:
-                create_plot(data, rescalers, src_heights, mode, dark, blurs)
+                create_plot(data, rescalers, src_heights, mode, dark, src_blurs)
 
             return clip
 
         return core.std.FrameEval(clip, functools.partial(func_core, clip=clip), clip)
 
-    def create_plot(data: Sequence[float], rescalers: List[rescale.Rescaler], src_heights: Sequence[float], mode: Mode, dark: bool, blurs: Sequence[float]) -> None:
+    def create_plot(data: Sequence[float], rescalers: List[rescale.Rescaler], src_heights: Sequence[float], mode: Mode, dark: bool, src_blurs: Sequence[float]) -> None:
         def get_heights_ticks(data: Sequence[float], src_heights: Sequence[float]) -> Sequence[float]:
             interval = round((max(src_heights) - min(src_heights)) * 0.05)
             log10_data = [math.log10(v) for v in data]
@@ -6299,25 +6299,25 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
                     ticks.append(kernels.index(kernel))
                     ticklabels.append(kernel)
             return ticks, ticklabels
-        def get_blur_ticks(data: Sequence[float], blurs: Sequence[float]) -> Sequence[float]:
-            interval = round((max(blurs) - min(blurs)) * 0.01)
+        def get_blur_ticks(data: Sequence[float], src_blurs: Sequence[float]) -> Sequence[float]:
+            interval = round((max(src_blurs) - min(src_blurs)) * 0.01)
             log10_data = [math.log10(v) for v in data]
             d2_log10_data = []
             valley_blurs = []
             for i in range(1, len(data) - 1):
                 if log10_data[i - 1] > log10_data[i] and log10_data[i + 1] > log10_data[i]:
                     d2_log10_data.append(log10_data[i - 1] + log10_data[i + 1] - 2 * log10_data[i])
-                    valley_blurs.append(blurs[i])
+                    valley_blurs.append(src_blurs[i])
             candidate_blurs = [valley_blurs[i] for _, i in sorted(zip(d2_log10_data, range(len(valley_blurs))), reverse=True)]
-            candidate_blurs.append(blurs[0])
-            candidate_blurs.append(blurs[-1])
+            candidate_blurs.append(src_blurs[0])
+            candidate_blurs.append(src_blurs[-1])
             ticks = []
-            for blur in candidate_blurs:
+            for src_blur in candidate_blurs:
                 for tick in ticks:
-                    if abs(blur - tick) < interval:
+                    if abs(src_blur - tick) < interval:
                         break
                 else:
-                    ticks.append(blur)
+                    ticks.append(src_blur)
             return ticks        
         if dark:
             plt.style.use("dark_background")
@@ -6354,13 +6354,13 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
             ticklabels = [ticklabel.replace('_', '\n') for ticklabel in ticklabels]
             ax.set(xlabel="Kernel", xticks=ticks, xticklabels=ticklabels, ylabel="Relative error", title=save_filename, yscale="log")
         elif mode == Mode.MULTI_BLUR:
-            save_filename = get_save_filename(f"blur_{blurs[0]}")
-            ax.plot(blurs, data, fmt)
-            ticks = get_blur_ticks(data, blurs)
+            save_filename = get_save_filename(f"blur_{src_blurs[0]}")
+            ax.plot(src_blurs, data, fmt)
+            ticks = get_blur_ticks(data, src_blurs)
             ax.set(xlabel="Blur", xticks=ticks, ylabel="Relative error", title=save_filename, yscale="log")
             with open(f"{save_filename}.txt", "w") as ftxt:
                 import pprint
-                pprint.pprint(list(zip(blurs, data)), stream=ftxt)
+                pprint.pprint(list(zip(src_blurs, data)), stream=ftxt)
         fig.savefig(f"{save_filename}")
         plt.close()
 
@@ -6375,56 +6375,56 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
     if mode == Mode.MULTI_FRAME:
         src_height = src_heights[0]
         rescaler = rescalers[0]
-        blur = blurs[0]
+        src_blur = src_blurs[0]
         if not vertical_only:
-            rescaled = rescaler.rescale(clip, src_height, base_height, blur=blur)
+            rescaled = rescaler.rescale(clip, src_height, base_height, src_blur=src_blur)
         else:
-            rescaled = rescaler.rescale_pro(clip, src_height=src_height, base_height=base_height, blur=blur)
+            rescaled = rescaler.rescale_pro(clip, src_height=src_height, base_height=base_height, src_blur=src_blur)
     elif mode == Mode.MULTI_HEIGHT:
         rescaler = rescalers[0]
-        blur = blurs[0]
+        src_blur = src_blurs[0]
         if rt_eval:
             clip = core.std.Loop(clip, len(src_heights))
             if not vertical_only:
-                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale(clip, src_heights[n], base_height, blur=blur))  # type: ignore
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale(clip, src_heights[n], base_height, src_blur=src_blur))  # type: ignore
             else:
-                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale_pro(clip, src_height = src_heights[n], base_height = base_height, blur=blur))  # type: ignore
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale_pro(clip, src_height = src_heights[n], base_height = base_height, src_blur=src_blur))  # type: ignore
         else:
             if not vertical_only:
-                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, blur=blur) for src_height in src_heights])  # type: ignore
+                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, src_blur=src_blur) for src_height in src_heights])  # type: ignore
             else:
-                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blur) for src_height in src_heights])  # type: ignore
+                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, src_blur=src_blur) for src_height in src_heights])  # type: ignore
             clip = core.std.Loop(clip, len(src_heights))
     elif mode == Mode.MULTI_KERNEL:
         src_height = src_heights[0]
-        blur = blurs[0]
+        src_blur = src_blurs[0]
         if rt_eval:
             clip = core.std.Loop(clip, len(rescalers))
             if not vertical_only:
-                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescalers[n].rescale(clip, src_height, base_height, blur=blur))  # type: ignore
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescalers[n].rescale(clip, src_height, base_height, src_blur=src_blur))  # type: ignore
             else:
-                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescalers[n].rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blur))  # type: ignore
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescalers[n].rescale_pro(clip, src_height = src_height, base_height = base_height, src_blur=src_blur))  # type: ignore
         else:
             if not vertical_only:
-                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, blur=blur) for rescaler in rescalers])  # type: ignore
+                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, src_blur=src_blur) for rescaler in rescalers])  # type: ignore
             else:
-                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blur) for rescaler in rescalers])  # type: ignore
+                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, src_blur=src_blur) for rescaler in rescalers])  # type: ignore
             clip = core.std.Loop(clip, len(rescalers))
     elif mode == Mode.MULTI_BLUR:
         src_height = src_heights[0]
         rescaler = rescalers[0]
         if rt_eval:
-            clip = core.std.Loop(clip, len(blurs))
+            clip = core.std.Loop(clip, len(src_blurs))
             if not vertical_only:
-                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale(clip, src_height, base_height, blur=blurs[n]))  # type: ignore
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale(clip, src_height, base_height, src_blur=src_blurs[n]))  # type: ignore
             else:
-                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blurs[n]))  # type: ignore
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, src_blur=src_blurs[n]))  # type: ignore
         else:
             if not vertical_only:
-                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, blur=blur) for blur in blurs])  # type: ignore
+                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, src_blur=src_blur) for src_blur in src_blurs])  # type: ignore
             else:
-                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blur) for blur in blurs])  # type: ignore
-            clip = core.std.Loop(clip, len(blurs))
+                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, src_blur=src_blur) for src_blur in src_blurs])  # type: ignore
+            clip = core.std.Loop(clip, len(src_blurs))
 
     diff = core.std.Expr([clip, rescaled], [f"x y - abs dup {ex_thr} > swap 0 ?"])
 
@@ -6433,7 +6433,7 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
 
     stats = core.std.PlaneStats(diff)
 
-    return output_statistics(stats, rescalers, src_heights, mode, dark, blurs)
+    return output_statistics(stats, rescalers, src_heights, mode, dark, src_blurs)
 
 # port from fmtconv by Firesledge
 class ResampleKernel:
