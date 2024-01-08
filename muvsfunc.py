@@ -5936,6 +5936,11 @@ class rescale:
             src_left, src_top = 0, 0
         else:
             base_width = round(W / H * base_height)
+            # if else by dtlnor patch about align odds number
+            if base_height % 2 == 0:
+                base_width = base_width // 2 * 2
+            else:
+                base_width = base_width // 2 * 2 + 1
             src_width = width
             src_height = height
             width = base_width - 2 * int((base_width - width) / 2)
@@ -5980,14 +5985,15 @@ class rescale:
         }
 
     def Upscale(clip: vs.VideoNode, width: int, height: int, kernel: str = "bicubic", taps: int = 3, b: float = 0.0, c: float = 0.5,
-        src_left: float = None, src_top: float = None, src_width: float = None, src_height: float = None) -> vs.VideoNode:
-        upscaler = getattr(core.resize, kernel.capitalize())
+        src_left: float = None, src_top: float = None, src_width: float = None, src_height: float = None, blur=1.0) -> vs.VideoNode:
+        notBlur = blur == 1.0
+        upscaler = getattr(core.resize, kernel.capitalize()) if notBlur else core.fmtc.resample
         if kernel.lower() == "bicubic":
-            upscaler = functools.partial(upscaler, filter_param_a=b, filter_param_b=c)
+            upscaler = functools.partial(upscaler, filter_param_a=b, filter_param_b=c) if notBlur else functools.partial(upscaler, a1=b, a2=c)
         elif kernel.lower() == "lanczos":
-            upscaler = functools.partial(upscaler, filter_param_a=taps)
+            upscaler = functools.partial(upscaler, filter_param_a=taps) if notBlur else functools.partial(upscaler, taps=taps)
 
-        return upscaler(clip, width, height, src_left=src_left, src_top=src_top, src_width=src_width, src_height=src_height)
+        return upscaler(clip, width, height, src_left=src_left, src_top=src_top, src_width=src_width, src_height=src_height) if notBlur else upscaler(clip, width, height, sx=src_left, sy=src_top, sw=src_width, sh=src_height, fv=1/blur, fh=1/blur, kernel=kernel)
 
     class Rescaler:
         def __init__(self, kernel: str = "bicubic", taps: int = 3, b: float = 0.0, c: float = 0.5, upscaler: Callable = None):
@@ -6004,44 +6010,58 @@ class rescale:
             base_height = clip.height if isinstance(src_height, float) else None
             return self.rescale(clip, src_height, base_height, upscaler)
 
-        def rescale(self, clip: vs.VideoNode, src_height: Union[int, float], base_height: Optional[int] = None, upscaler: Optional[Callable] = None) -> vs.VideoNode:
+        def rescale(self, clip: vs.VideoNode, src_height: Union[int, float], base_height: Optional[int] = None, upscaler: Optional[Callable] = None, blur=1.0) -> vs.VideoNode:
             W, H = clip.width, clip.height
             src_width = W / H * src_height
-            descaled = self.descale(clip, src_width, src_height, base_height)
-            rescaled = self.upscale(descaled, W, H, upscaler)
+            descaled = self.descale(clip, src_width, src_height, base_height, blur)
+            rescaled = self.upscale(descaled, W, H, upscaler, blur)
             return rescaled
 
-        def rescale_pro(self, clip: vs.VideoNode, src_width: Union[int, float] = None, src_height: Union[int, float] = None, base_width: Optional[int] = None, base_height: Optional[int] = None, upscaler: Optional[Callable] = None) -> vs.VideoNode:
+        def rescale_pro(self, clip: vs.VideoNode, src_width: Union[int, float] = None, src_height: Union[int, float] = None, base_width: Optional[int] = None, base_height: Optional[int] = None, upscaler: Optional[Callable] = None, blur=1.0) -> vs.VideoNode:
 
             if ((src_height is None) and (src_width is None)):
                 raise TypeError("At least one of the 'src_height' and 'src_width' must be set.")
 
-            descaled = self.descale_pro(clip, src_width, src_height, base_width, base_height)
-            rescaled = self.upscale(descaled, clip.width, clip.height, upscaler)
+            descaled = self.descale_pro(clip, src_width, src_height, base_width, base_height, blur)
+            rescaled = self.upscale(descaled, clip.width, clip.height, upscaler, blur)
             return rescaled
 
-        def descale(self, clip: vs.VideoNode, width: Union[int, float], height: Union[int, float], base_height: int = None):
+        def descale(self, clip: vs.VideoNode, width: Union[int, float], height: Union[int, float], base_height: int = None, blur=1.0):
             W, H = clip.width, clip.height
             self.descale_args = rescale._get_descale_args(W, H, width, height, base_height)
             kwargs = self.descale_args.copy()
-            return core.descale.Descale(clip, kernel=self.kernel, taps=self.taps, b=self.b, c=self.c, **kwargs)
 
-        def descale_pro(self, clip: vs.VideoNode, width: Union[int, float] = None, height: Union[int, float] = None, base_width: int = None, base_height: int = None):
+            descaler = getattr(core.descale, 'De'+self.kernel.lower())
+            if self.kernel.lower() == "bicubic":
+                return descaler(clip, b=self.b, c=self.c, blur=blur, **kwargs)
+            elif self.kernel.lower() == "lanczos":
+                return descaler(clip, taps=self.taps, blur=blur, **kwargs)
+            else:
+                return descaler(clip, blur=blur, **kwargs)
+
+        def descale_pro(self, clip: vs.VideoNode, width: Union[int, float] = None, height: Union[int, float] = None, base_width: int = None, base_height: int = None, blur=1.0):
             if width is None:
                 width = clip.width
             if height is None:
                 height = clip.height
             self.descale_args = rescale._get_descale_args_pro(width, height, base_height, base_width)
             kwargs = self.descale_args.copy()
-            return core.descale.Descale(clip, kernel=self.kernel, taps=self.taps, b=self.b, c=self.c, **kwargs)
 
-        def upscale(self, clip: vs.VideoNode, width: int, height: int, upscaler: Optional[Callable] = None) -> vs.VideoNode:
+            descaler = getattr(core.descale, 'De'+self.kernel.lower())
+            if self.kernel.lower() == "bicubic":
+                return descaler(clip, b=self.b, c=self.c, blur=blur, **kwargs)
+            elif self.kernel.lower() == "lanczos":
+                return descaler(clip, taps=self.taps, blur=blur, **kwargs)
+            else:
+                return descaler(clip, blur=blur, **kwargs)
+            
+        def upscale(self, clip: vs.VideoNode, width: int, height: int, upscaler: Optional[Callable] = None, blur=1.0) -> vs.VideoNode:
             from inspect import signature
             kwargs = self.descale_args.copy()
             kwargs.pop("width")
             kwargs.pop("height")
             if upscaler is None:
-                return rescale.Upscale(clip, width, height, kernel=self.kernel, taps=self.taps, b=self.b, c=self.c, **kwargs)
+                return rescale.Upscale(clip, width, height, kernel=self.kernel, taps=self.taps, b=self.b, c=self.c, blur=blur, **kwargs)
             else:
                 param_dict = signature(upscaler).parameters
                 if all(key in param_dict for key in ("src_left", "src_top", "src_width", "src_height")):
@@ -6076,7 +6096,7 @@ class rescale:
 
 def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescale.Rescaler]] = [rescale.Bicubic(0, 0.5)],
     src_heights: Union[int, float, Sequence[int], Sequence[float]] = tuple(range(500, 1001)), base_height: int = None,
-    crop_size: int = 5, rt_eval: bool = True, dark: bool = True, ex_thr: float = 0.015, filename: str = None, vertical_only: bool = False) -> vs.VideoNode:
+    crop_size: int = 5, rt_eval: bool = True, dark: bool = True, ex_thr: float = 0.015, filename: str = None, vertical_only: bool = False, blur=1.0) -> vs.VideoNode:
     """Find the native resolution(s) of upscaled material (mostly anime)
 
     Modifyed from:
@@ -6319,36 +6339,36 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
         src_height = src_heights[0]
         rescaler = rescalers[0]
         if not vertical_only:
-            rescaled = rescaler.rescale(clip, src_height, base_height)
+            rescaled = rescaler.rescale(clip, src_height, base_height, blur=blur)
         else:
-            rescaled = rescaler.rescale_pro(clip, src_height=src_height, base_height=base_height)
+            rescaled = rescaler.rescale_pro(clip, src_height=src_height, base_height=base_height, blur=blur)
     elif mode == Mode.MULTI_HEIGHT:
         rescaler = rescalers[0]
         if rt_eval:
             clip = core.std.Loop(clip, len(src_heights))
             if not vertical_only:
-                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale(clip, src_heights[n], base_height))  # type: ignore
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale(clip, src_heights[n], base_height, blur=blur))  # type: ignore
             else:
-                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale_pro(clip, src_height = src_heights[n], base_height = base_height))  # type: ignore
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale_pro(clip, src_height = src_heights[n], base_height = base_height, blur=blur))  # type: ignore
         else:
             if not vertical_only:
-                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height) for src_height in src_heights])  # type: ignore
+                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, blur=blur) for src_height in src_heights])  # type: ignore
             else:
-                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height) for src_height in src_heights])  # type: ignore
+                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blur) for src_height in src_heights])  # type: ignore
             clip = core.std.Loop(clip, len(src_heights))
     elif mode == Mode.MULTI_KERNEL:
         src_height = src_heights[0]
         if rt_eval:
             clip = core.std.Loop(clip, len(rescalers))
             if not vertical_only:
-                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescalers[n].rescale(clip, src_height, base_height))  # type: ignore
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescalers[n].rescale(clip, src_height, base_height, blur=blur))  # type: ignore
             else:
-                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescalers[n].rescale_pro(clip, src_height = src_height, base_height = base_height))  # type: ignore
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescalers[n].rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blur))  # type: ignore
         else:
             if not vertical_only:
-                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height) for rescaler in rescalers])  # type: ignore
+                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, blur=blur) for rescaler in rescalers])  # type: ignore
             else:
-                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height) for rescaler in rescalers])  # type: ignore
+                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blur) for rescaler in rescalers])  # type: ignore
             clip = core.std.Loop(clip, len(rescalers))
 
     diff = core.std.Expr([clip, rescaled], [f"x y - abs dup {ex_thr} > swap 0 ?"])
