@@ -6096,7 +6096,7 @@ class rescale:
 
 def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescale.Rescaler]] = [rescale.Bicubic(0, 0.5)],
     src_heights: Union[int, float, Sequence[int], Sequence[float]] = tuple(range(500, 1001)), base_height: int = None,
-    crop_size: int = 5, rt_eval: bool = True, dark: bool = True, ex_thr: float = 0.015, filename: str = None, vertical_only: bool = False, blur=1.0) -> vs.VideoNode:
+    crop_size: int = 5, rt_eval: bool = True, dark: bool = True, ex_thr: float = 0.015, filename: str = None, vertical_only: bool = False, blurs = [1.0,]) -> vs.VideoNode:
     """Find the native resolution(s) of upscaled material (mostly anime)
 
     Modifyed from:
@@ -6202,6 +6202,7 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
         MULTI_FRAME = 1
         MULTI_HEIGHT = 2
         MULTI_KERNEL = 3
+        MULTI_BLUR = 4
 
     # check
     assert isinstance(clip, vs.VideoNode) and clip.format.id == vs.GRAYS
@@ -6219,17 +6220,25 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
     if base_height is not None:
         assert base_height > max(src_heights)
 
+    if isinstance(blurs, int) or isinstance(blurs, float):
+        blurs = (blurs,)
+    if not isinstance(blurs, tuple):
+        blurs = tuple(blurs)
+
     if clip.num_frames > 1:
         mode = Mode.MULTI_FRAME
-        assert len(src_heights) == 1 and len(rescalers) == 1, "1 src_height and 1 rescaler should be passed for verify mode."
+        assert len(src_heights) == 1 and len(rescalers) == 1 and len(blurs) == 1, "1 src_height and 1 rescaler should be passed for verify mode."
     elif len(src_heights) > 1:
         mode = Mode.MULTI_HEIGHT
-        assert clip.num_frames == 1 and len(rescalers) == 1, "1-frame clip and 1 rescaler should be passed for multi heights mode."
+        assert clip.num_frames == 1 and len(rescalers) == 1 and len(blurs) == 1,  "1-frame clip and 1 rescaler should be passed for multi heights mode."
     elif len(rescalers) > 1:
         mode = Mode.MULTI_KERNEL
-        assert clip.num_frames == 1 and len(src_heights) == 1, "1-frame clip and 1 src_height shoule be passed for multi kernels mode."
+        assert clip.num_frames == 1 and len(src_heights) == 1 and len(blurs) == 1, "1-frame clip and 1 src_height shoule be passed for multi kernels mode."
+    elif len(blurs) > 1:
+        mode = Mode.MULTI_BLUR
+        assert clip.num_frames == 1 and len(src_heights) == 1 and len(rescalers) == 1, "1-frame clip and 1 src_height and 1 rescaler shoule be passed for multi blur mode."
 
-    def output_statistics(clip: vs.VideoNode, rescalers: List[rescale.Rescaler], src_heights: Sequence[int], mode: Mode, dark: bool) -> vs.VideoNode:
+    def output_statistics(clip: vs.VideoNode, rescalers: List[rescale.Rescaler], src_heights: Sequence[int], mode: Mode, dark: bool, blurs: Sequence[float]) -> vs.VideoNode:
         data = [0] * clip.num_frames
         remaining_frames = [1] * clip.num_frames # mutable
 
@@ -6241,13 +6250,13 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
             remaining_frames[n] = 0
 
             if sum(remaining_frames) == 0:
-                create_plot(data, rescalers, src_heights, mode, dark)
+                create_plot(data, rescalers, src_heights, mode, dark, blurs)
 
             return clip
 
         return core.std.FrameEval(clip, functools.partial(func_core, clip=clip), clip)
 
-    def create_plot(data: Sequence[float], rescalers: List[rescale.Rescaler], src_heights: Sequence[float], mode: Mode, dark: bool) -> None:
+    def create_plot(data: Sequence[float], rescalers: List[rescale.Rescaler], src_heights: Sequence[float], mode: Mode, dark: bool, blurs: Sequence[float]) -> None:
         def get_heights_ticks(data: Sequence[float], src_heights: Sequence[float]) -> Sequence[float]:
             interval = round((max(src_heights) - min(src_heights)) * 0.05)
             log10_data = [math.log10(v) for v in data]
@@ -6290,6 +6299,26 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
                     ticks.append(kernels.index(kernel))
                     ticklabels.append(kernel)
             return ticks, ticklabels
+        def get_blur_ticks(data: Sequence[float], blurs: Sequence[float]) -> Sequence[float]:
+            interval = round((max(blurs) - min(blurs)) * 0.01)
+            log10_data = [math.log10(v) for v in data]
+            d2_log10_data = []
+            valley_blurs = []
+            for i in range(1, len(data) - 1):
+                if log10_data[i - 1] > log10_data[i] and log10_data[i + 1] > log10_data[i]:
+                    d2_log10_data.append(log10_data[i - 1] + log10_data[i + 1] - 2 * log10_data[i])
+                    valley_blurs.append(blurs[i])
+            candidate_blurs = [valley_blurs[i] for _, i in sorted(zip(d2_log10_data, range(len(valley_blurs))), reverse=True)]
+            candidate_blurs.append(blurs[0])
+            candidate_blurs.append(blurs[-1])
+            ticks = []
+            for blur in candidate_blurs:
+                for tick in ticks:
+                    if abs(blur - tick) < interval:
+                        break
+                else:
+                    ticks.append(blur)
+            return ticks        
         if dark:
             plt.style.use("dark_background")
             fmt = ".w-"
@@ -6324,6 +6353,14 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
                 ticks, ticklabels = get_kernel_ticks(data, ticklabels)
             ticklabels = [ticklabel.replace('_', '\n') for ticklabel in ticklabels]
             ax.set(xlabel="Kernel", xticks=ticks, xticklabels=ticklabels, ylabel="Relative error", title=save_filename, yscale="log")
+        elif mode == Mode.MULTI_BLUR:
+            save_filename = get_save_filename(f"blur_{blurs[0]}")
+            ax.plot(blurs, data, fmt)
+            ticks = get_blur_ticks(data, blurs)
+            ax.set(xlabel="Blur", xticks=ticks, ylabel="Relative error", title=save_filename, yscale="log")
+            with open(f"{save_filename}.txt", "w") as ftxt:
+                import pprint
+                pprint.pprint(list(zip(blurs, data)), stream=ftxt)
         fig.savefig(f"{save_filename}")
         plt.close()
 
@@ -6338,12 +6375,14 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
     if mode == Mode.MULTI_FRAME:
         src_height = src_heights[0]
         rescaler = rescalers[0]
+        blur = blurs[0]
         if not vertical_only:
             rescaled = rescaler.rescale(clip, src_height, base_height, blur=blur)
         else:
             rescaled = rescaler.rescale_pro(clip, src_height=src_height, base_height=base_height, blur=blur)
     elif mode == Mode.MULTI_HEIGHT:
         rescaler = rescalers[0]
+        blur = blurs[0]
         if rt_eval:
             clip = core.std.Loop(clip, len(src_heights))
             if not vertical_only:
@@ -6358,6 +6397,7 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
             clip = core.std.Loop(clip, len(src_heights))
     elif mode == Mode.MULTI_KERNEL:
         src_height = src_heights[0]
+        blur = blurs[0]
         if rt_eval:
             clip = core.std.Loop(clip, len(rescalers))
             if not vertical_only:
@@ -6370,6 +6410,21 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
             else:
                 rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blur) for rescaler in rescalers])  # type: ignore
             clip = core.std.Loop(clip, len(rescalers))
+    elif mode == Mode.MULTI_BLUR:
+        src_height = src_heights[0]
+        rescaler = rescalers[0]
+        if rt_eval:
+            clip = core.std.Loop(clip, len(blurs))
+            if not vertical_only:
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale(clip, src_height, base_height, blur=blurs[n]))  # type: ignore
+            else:
+                rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blurs[n]))  # type: ignore
+        else:
+            if not vertical_only:
+                rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, blur=blur) for blur in blurs])  # type: ignore
+            else:
+                rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, blur=blur) for blur in blurs])  # type: ignore
+            clip = core.std.Loop(clip, len(blurs))
 
     diff = core.std.Expr([clip, rescaled], [f"x y - abs dup {ex_thr} > swap 0 ?"])
 
@@ -6378,7 +6433,7 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
 
     stats = core.std.PlaneStats(diff)
 
-    return output_statistics(stats, rescalers, src_heights, mode, dark)
+    return output_statistics(stats, rescalers, src_heights, mode, dark, blurs)
 
 # port from fmtconv by Firesledge
 class ResampleKernel:
