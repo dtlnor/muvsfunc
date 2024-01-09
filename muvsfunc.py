@@ -78,7 +78,7 @@ import numbers
 import operator
 import os
 import typing
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, Literal
 from typing import Sequence, Tuple, TypedDict, TypeVar, Union
 
 import vapoursynth as vs
@@ -6096,7 +6096,9 @@ class rescale:
 
 def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescale.Rescaler]] = [rescale.Bicubic(0, 0.5)],
     src_heights: Union[int, float, Sequence[int], Sequence[float]] = tuple(range(500, 1001)), base_height: int = None,
-    crop_size: int = 5, rt_eval: bool = True, dark: bool = True, ex_thr: float = 0.015, filename: str = None, vertical_only: bool = False, src_blurs = [1.0]) -> vs.VideoNode:
+    crop_size: int = 5, rt_eval: bool = True, dark: bool = True, ex_thr: float = 0.015, filename: str = None, vertical_only: bool = False, src_blurs = [1.0],
+    ref_src: vs.VideoNode = None, planeStatsMode: Literal["PlaneStatsAverage", "PlaneMAE", "PlaneRMSE", "PlaneCov","PlaneCorr","PlaneGMSD","PlaneSSIM","PlanePSNR"] = "PlaneStatsAverage") -> vs.VideoNode:
+
     """Find the native resolution(s) of upscaled material (mostly anime)
 
     Modifyed from:
@@ -6244,7 +6246,7 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
 
         def func_core(n: int, f: vs.VideoFrame, clip: vs.VideoNode) -> vs.VideoNode:
             # add eps to avoid getting 0 diff, which later messes up the graph.
-            data[n] = f.props.PlaneStatsAverage + 1e-9 # type: ignore
+            data[n] = f.props.get(planeStatsMode) + 1e-9 # type: ignore
 
             nonlocal remaining_frames
             remaining_frames[n] = 0
@@ -6426,12 +6428,28 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
                 rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, src_blur=src_blur) for src_blur in src_blurs])  # type: ignore
             clip = core.std.Loop(clip, len(src_blurs))
 
-    diff = core.std.Expr([clip, rescaled], [f"x y - abs dup {ex_thr} > swap 0 ?"])
+    stats = None
+    if planeStatsMode == "PlaneStatsAverage":
+        diff = core.std.Expr([clip, rescaled], [f"x y - abs dup {ex_thr} > swap 0 ?"])
 
-    if crop_size > 0:
-        diff = core.std.CropRel(diff, *([crop_size] * 4))
+        if crop_size > 0:
+            diff = core.std.CropRel(diff, *([crop_size] * 4))
 
-    stats = core.std.PlaneStats(diff)
+        stats = core.std.PlaneStats(diff)
+    elif planeStatsMode == "PlaneCorr":
+        mvf.PlaneCompare(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)), mae=False, rmse=False, psnr=False, cov=False, corr=True)
+    elif planeStatsMode == "PlaneCov":
+        mvf.PlaneCompare(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)), mae=False, rmse=False, psnr=False, cov=True, corr=False)
+    elif planeStatsMode == "PlanePSNR":
+        core.complane.PSNR(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)))
+    elif planeStatsMode == "PlaneMAE":
+        mvf.PlaneCompare(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)), mae=True, rmse=False, psnr=False, cov=False, corr=False)
+    elif planeStatsMode == "PlaneRMSE":
+        mvf.PlaneCompare(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)), mae=False, rmse=True, psnr=False, cov=False, corr=False)
+    elif planeStatsMode == "PlaneGMSD":
+        GMSD(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)))
+    elif planeStatsMode == "PlaneSSIM":
+        SSIM(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)))
 
     return output_statistics(stats, rescalers, src_heights, mode, dark, src_blurs)
 
