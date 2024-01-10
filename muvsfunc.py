@@ -5985,8 +5985,8 @@ class rescale:
         }
 
     def Upscale(clip: vs.VideoNode, width: int, height: int, kernel: str = "bicubic", taps: int = 3, b: float = 0.0, c: float = 0.5,
-        src_left: float = None, src_top: float = None, src_width: float = None, src_height: float = None, src_blur=1.0) -> vs.VideoNode:
-        notBlur = src_blur == 1.0
+        src_left: float = None, src_top: float = None, src_width: float = None, src_height: float = None, src_blur: float = None) -> vs.VideoNode:
+        notBlur = src_blur is None
         upscaler = getattr(core.resize, kernel.capitalize()) if notBlur else core.fmtc.resample
         if kernel.lower() == "bicubic":
             upscaler = functools.partial(upscaler, filter_param_a=b, filter_param_b=c) if notBlur else functools.partial(upscaler, a1=b, a2=c)
@@ -6010,21 +6010,21 @@ class rescale:
             base_height = clip.height if isinstance(src_height, float) else None
             return self.rescale(clip, src_height, base_height, upscaler)
 
-        def rescale(self, clip: vs.VideoNode, src_height: Union[int, float], base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur=1.0) -> vs.VideoNode:
+        def rescale(self, clip: vs.VideoNode, src_height: Union[int, float], base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur: Optional[Union[int, float]] = None) -> vs.VideoNode:
             W, H = clip.width, clip.height
             src_width = W / H * src_height
             descaled = self.descale(clip, src_width, src_height, base_height, src_blur)
             rescaled = self.upscale(descaled, W, H, upscaler, src_blur)
             return rescaled
         
-        def rescale_dsref(self, clip: vs.VideoNode, src_height: Union[int, float], base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur=1.0, ref_src: vs.VideoNode=None) -> vs.VideoNode:
+        def rescale_dsref(self, clip: vs.VideoNode, src_height: Union[int, float], base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur: Optional[Union[int, float]] = None, ref_src: Optional[vs.VideoNode] = None) -> vs.VideoNode:
             W, H = clip.width, clip.height
             src_width = W / H * src_height
             self.descale_args = rescale._get_descale_args(W, H, src_width, src_height, base_height)
             rescaled = self.upscale(ref_src, W, H, upscaler, src_blur)
             return rescaled
 
-        def rescale_pro(self, clip: vs.VideoNode, src_width: Union[int, float] = None, src_height: Union[int, float] = None, base_width: Optional[int] = None, base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur=1.0) -> vs.VideoNode:
+        def rescale_pro(self, clip: vs.VideoNode, src_width: Union[int, float] = None, src_height: Union[int, float] = None, base_width: Optional[int] = None, base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur: Optional[Union[int, float]] = None) -> vs.VideoNode:
 
             if ((src_height is None) and (src_width is None)):
                 raise TypeError("At least one of the 'src_height' and 'src_width' must be set.")
@@ -6033,7 +6033,7 @@ class rescale:
             rescaled = self.upscale(descaled, clip.width, clip.height, upscaler, src_blur)
             return rescaled
 
-        def rescale_pro_dsref(self, clip: vs.VideoNode, src_width: Union[int, float] = None, src_height: Union[int, float] = None, base_width: Optional[int] = None, base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur=1.0, ref_src: vs.VideoNode=None) -> vs.VideoNode:
+        def rescale_pro_dsref(self, clip: vs.VideoNode, src_width: Union[int, float] = None, src_height: Union[int, float] = None, base_width: Optional[int] = None, base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur: Optional[Union[int, float]] = None, ref_src: Optional[vs.VideoNode] = None) -> vs.VideoNode:
 
             if ((src_height is None) and (src_width is None)):
                 raise TypeError("At least one of the 'src_height' and 'src_width' must be set.")
@@ -6042,36 +6042,38 @@ class rescale:
             rescaled = self.upscale(ref_src, clip.width, clip.height, upscaler, src_blur)
             return rescaled
         
-        def descale(self, clip: vs.VideoNode, width: Union[int, float], height: Union[int, float], base_height: int = None, src_blur=1.0):
+        def descale(self, clip: vs.VideoNode, width: Union[int, float], height: Union[int, float], base_height: int = None, src_blur: Optional[Union[int, float]] = None):
             W, H = clip.width, clip.height
             self.descale_args = rescale._get_descale_args(W, H, width, height, base_height)
             kwargs = self.descale_args.copy()
+            blur = 1 if src_blur is None else 1/src_blur
 
             descaler = getattr(core.descale, 'De'+self.kernel.lower())
             if self.kernel.lower() == "bicubic":
-                return descaler(clip, b=self.b, c=self.c, blur=1/src_blur, **kwargs)
+                return descaler(clip, b=self.b, c=self.c, blur=blur, **kwargs)
             elif self.kernel.lower() == "lanczos":
-                return descaler(clip, taps=self.taps, blur=1/src_blur, **kwargs)
+                return descaler(clip, taps=self.taps, blur=blur, **kwargs)
             else:
-                return descaler(clip, blur=1/src_blur, **kwargs)
+                return descaler(clip, blur=blur, **kwargs)
 
-        def descale_pro(self, clip: vs.VideoNode, width: Union[int, float] = None, height: Union[int, float] = None, base_width: int = None, base_height: int = None, src_blur=1.0):
+        def descale_pro(self, clip: vs.VideoNode, width: Union[int, float] = None, height: Union[int, float] = None, base_width: int = None, base_height: int = None, src_blur: Optional[Union[int, float]] = None):
             if width is None:
                 width = clip.width
             if height is None:
                 height = clip.height
             self.descale_args = rescale._get_descale_args_pro(width, height, base_height, base_width)
             kwargs = self.descale_args.copy()
+            blur = 1 if src_blur is None else 1/src_blur
 
             descaler = getattr(core.descale, 'De'+self.kernel.lower())
             if self.kernel.lower() == "bicubic":
-                return descaler(clip, b=self.b, c=self.c, blur=1/src_blur, **kwargs)
+                return descaler(clip, b=self.b, c=self.c, blur=blur, **kwargs)
             elif self.kernel.lower() == "lanczos":
-                return descaler(clip, taps=self.taps, blur=1/src_blur, **kwargs)
+                return descaler(clip, taps=self.taps, blur=blur, **kwargs)
             else:
-                return descaler(clip, blur=1/src_blur, **kwargs)
+                return descaler(clip, blur=blur, **kwargs)
             
-        def upscale(self, clip: vs.VideoNode, width: int, height: int, upscaler: Optional[Callable] = None, src_blur=1.0) -> vs.VideoNode:
+        def upscale(self, clip: vs.VideoNode, width: int, height: int, upscaler: Optional[Callable] = None, src_blur: Optional[Union[int, float]] = None) -> vs.VideoNode:
             from inspect import signature
             kwargs = self.descale_args.copy()
             kwargs.pop("width")
@@ -6112,8 +6114,9 @@ class rescale:
 
 def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescale.Rescaler]] = [rescale.Bicubic(0, 0.5)],
     src_heights: Union[int, float, Sequence[int], Sequence[float]] = tuple(range(500, 1001)), base_height: int = None,
-    crop_size: int = 5, rt_eval: bool = True, dark: bool = True, ex_thr: float = 0.015, filename: str = None, vertical_only: bool = False, src_blurs = [1.0],
-    ref_src: vs.VideoNode = None, planeStatsMode: Literal["PlaneStatsAverage", "PlaneMAE", "PlaneRMSE", "PlaneCov","PlaneCorr","PlaneGMSD","PlaneSSIM","PlanePSNR"] = "PlaneStatsAverage") -> vs.VideoNode:
+    crop_size: int = 5, rt_eval: bool = True, dark: bool = True, ex_thr: float = 0.015, filename: str = None, vertical_only: bool = False,
+    src_blurs: Optional[Union[int, float, Sequence[int], Sequence[float]]] = None, ref_src: vs.VideoNode = None,
+    planeStatsMode: Literal["PlaneStatsAverage", "PlaneMAE", "PlaneRMSE", "PlaneCov","PlaneCorr","PlaneGMSD","PlaneSSIM","PlanePSNR"] = "PlaneStatsAverage") -> vs.VideoNode:
 
     """Find the native resolution(s) of upscaled material (mostly anime)
 
@@ -6238,10 +6241,13 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
     if base_height is not None:
         assert base_height > max(src_heights)
 
-    if isinstance(src_blurs, int) or isinstance(src_blurs, float):
-        src_blurs = (src_blurs,)
-    if not isinstance(src_blurs, tuple):
-        src_blurs = tuple(src_blurs)
+    if src_blurs is None:
+        src_blurs = tuple(None,)
+    else:
+        if isinstance(src_blurs, int) or isinstance(src_blurs, float):
+            src_blurs = (src_blurs,)
+        if not isinstance(src_blurs, tuple):
+            src_blurs = tuple(src_blurs)
 
     if clip.num_frames > 1:
         mode = Mode.MULTI_FRAME
