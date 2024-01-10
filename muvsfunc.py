@@ -5986,7 +5986,7 @@ class rescale:
 
     def Upscale(clip: vs.VideoNode, width: int, height: int, kernel: str = "bicubic", taps: int = 3, b: float = 0.0, c: float = 0.5,
         src_left: float = None, src_top: float = None, src_width: float = None, src_height: float = None, src_blur: float = None) -> vs.VideoNode:
-        notBlur = src_blur is None
+        notBlur = src_blur is None or src_blur == 1.0
         upscaler = getattr(core.resize, kernel.capitalize()) if notBlur else core.fmtc.resample
         if kernel.lower() == "bicubic":
             upscaler = functools.partial(upscaler, filter_param_a=b, filter_param_b=c) if notBlur else functools.partial(upscaler, a1=b, a2=c)
@@ -5996,7 +5996,7 @@ class rescale:
         return upscaler(clip, width, height, src_left=src_left, src_top=src_top, src_width=src_width, src_height=src_height) if notBlur else upscaler(clip, width, height, sx=src_left, sy=src_top, sw=src_width, sh=src_height, fv=src_blur, fh=src_blur, kernel=kernel)
 
     class Rescaler:
-        def __init__(self, kernel: str = "bicubic", taps: int = 3, b: float = 0.0, c: float = 0.5, upscaler: Callable = None):
+        def __init__(self, kernel: str = "bicubic", taps: int = 3, b: float = 0.0, c: float = 0.5, upscaler: Callable = None, fvfh: float = 1.0):
             kernel = kernel.lower()
             self.kernel = kernel
             self.taps, self.b, self.c = taps, b, c
@@ -6005,10 +6005,11 @@ class rescale:
             taps_name = f"{taps}" if kernel == "lanczos" else ""
             self.name = f"{kernel}{bc_name}{taps_name}"
             self.descale_args = {}
+            self.fvfh = fvfh
 
-        def __call__(self, clip: vs.VideoNode, src_height: Union[int, float], upscaler: Optional[Callable] = None) -> Any:
+        def __call__(self, clip: vs.VideoNode, src_height: Union[int, float], upscaler: Optional[Callable] = None, src_blur: Optional[Union[int, float]] = None) -> Any:
             base_height = clip.height if isinstance(src_height, float) else None
-            return self.rescale(clip, src_height, base_height, upscaler)
+            return self.rescale(clip, src_height, base_height, upscaler, src_blur)
 
         def rescale(self, clip: vs.VideoNode, src_height: Union[int, float], base_height: Optional[int] = None, upscaler: Optional[Callable] = None, src_blur: Optional[Union[int, float]] = None) -> vs.VideoNode:
             W, H = clip.width, clip.height
@@ -6046,7 +6047,7 @@ class rescale:
             W, H = clip.width, clip.height
             self.descale_args = rescale._get_descale_args(W, H, width, height, base_height)
             kwargs = self.descale_args.copy()
-            blur = 1 if src_blur is None else 1/src_blur
+            blur = 1/self.fvfh if src_blur is None else 1/src_blur
 
             descaler = getattr(core.descale, 'De'+self.kernel.lower())
             if self.kernel.lower() == "bicubic":
@@ -6063,7 +6064,7 @@ class rescale:
                 height = clip.height
             self.descale_args = rescale._get_descale_args_pro(width, height, base_height, base_width)
             kwargs = self.descale_args.copy()
-            blur = 1 if src_blur is None else 1/src_blur
+            blur = 1/self.fvfh if src_blur is None else 1/src_blur
 
             descaler = getattr(core.descale, 'De'+self.kernel.lower())
             if self.kernel.lower() == "bicubic":
@@ -6079,7 +6080,7 @@ class rescale:
             kwargs.pop("width")
             kwargs.pop("height")
             if upscaler is None:
-                return rescale.Upscale(clip, width, height, kernel=self.kernel, taps=self.taps, b=self.b, c=self.c, src_blur=src_blur, **kwargs)
+                return rescale.Upscale(clip, width, height, kernel=self.kernel, taps=self.taps, b=self.b, c=self.c, src_blur=self.fvfh if src_blur is None else src_blur, **kwargs)
             else:
                 param_dict = signature(upscaler).parameters
                 if all(key in param_dict for key in ("src_left", "src_top", "src_width", "src_height")):
@@ -6093,23 +6094,23 @@ class rescale:
                     raise TypeError("Your upscaler must have resize-like (src_left, src_width) or fmtc-like (sx, sw) argument names")
                 return upscaler(clip, width, height, **kwargs)
 
-    def Bilinear():
-        return rescale.Rescaler(kernel="bilinear")
+    def Bilinear(fvfh: float = 1.0):
+        return rescale.Rescaler(kernel="bilinear", fvfh=fvfh)
 
-    def Bicubic(b: float = 0.0, c: float = 0.5):
-        return rescale.Rescaler(kernel="bicubic", b=b, c=c)
+    def Bicubic(b: float = 0.0, c: float = 0.5, fvfh: float = 1.0):
+        return rescale.Rescaler(kernel="bicubic", b=b, c=c, fvfh=fvfh)
 
-    def Lanczos(taps: int = 3):
-        return rescale.Rescaler(kernel="lanczos", taps=taps)
+    def Lanczos(taps: int = 3, fvfh: float = 1.0):
+        return rescale.Rescaler(kernel="lanczos", taps=taps, fvfh=fvfh)
 
-    def Spline16():
-        return rescale.Rescaler(kernel="spline16")
+    def Spline16(fvfh: float = 1.0):
+        return rescale.Rescaler(kernel="spline16", fvfh=fvfh)
 
-    def Spline36():
-        return rescale.Rescaler(kernel="spline36")
+    def Spline36(fvfh: float = 1.0):
+        return rescale.Rescaler(kernel="spline36", fvfh=fvfh)
 
-    def Spline64():
-        return rescale.Rescaler(kernel="spline64")
+    def Spline64(fvfh: float = 1.0):
+        return rescale.Rescaler(kernel="spline64", fvfh=fvfh)
 
 
 def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescale.Rescaler]] = [rescale.Bicubic(0, 0.5)],
