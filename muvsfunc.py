@@ -6244,7 +6244,7 @@ def getnative(clip: vs.VideoNode, rescalers: Union[rescale.Rescaler, List[rescal
         assert base_height > max(src_heights)
 
     if src_blurs is None:
-        src_blurs = tuple(None,)
+        src_blurs = (None,)
     else:
         if isinstance(src_blurs, int) or isinstance(src_blurs, float):
             src_blurs = (src_blurs,)
