@@ -5888,9 +5888,10 @@ def MSR(clip: vs.VideoNode, *passes: numbers.Real, radius: int = 1, planes: Plan
 
 
 def arange(start, stop, step=1):
+    dp = len(str(step).split('.')[-1]) if step < 1 else 0
     current = start
     while current < stop:
-        yield current
+        yield round(current, dp)
         current += step
 
 
