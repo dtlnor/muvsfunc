@@ -5930,6 +5930,7 @@ class rescale:
 
     """
 
+    @staticmethod
     def _get_descale_args(W: int, H: int, width: Union[float, int], height: Union[float, int], base_height: int = None):
         if base_height is None:
             width, height = round(width), round(height)
@@ -5958,6 +5959,7 @@ class rescale:
             "src_height": src_height,
         }
 
+    @staticmethod
     def _get_descale_args_pro(width: Union[float, int], height: Union[float, int], base_height: int = None, base_width: int = None):
         if base_height is None:
             height = round(height)
@@ -5985,6 +5987,7 @@ class rescale:
             "src_height": src_height,
         }
 
+    @staticmethod
     def Upscale(clip: vs.VideoNode, width: int, height: int, kernel: str = "bicubic", taps: int = 3, b: float = 0.0, c: float = 0.5,
         src_left: float = None, src_top: float = None, src_width: float = None, src_height: float = None, src_blur: float = None) -> vs.VideoNode:
         notBlur = src_blur is None or src_blur == 1.0
@@ -6095,21 +6098,27 @@ class rescale:
                     raise TypeError("Your upscaler must have resize-like (src_left, src_width) or fmtc-like (sx, sw) argument names")
                 return upscaler(clip, width, height, **kwargs)
 
+    @staticmethod
     def Bilinear(fvfh: float = 1.0):
         return rescale.Rescaler(kernel="bilinear", fvfh=fvfh)
 
+    @staticmethod
     def Bicubic(b: float = 0.0, c: float = 0.5, fvfh: float = 1.0):
         return rescale.Rescaler(kernel="bicubic", b=b, c=c, fvfh=fvfh)
 
+    @staticmethod
     def Lanczos(taps: int = 3, fvfh: float = 1.0):
         return rescale.Rescaler(kernel="lanczos", taps=taps, fvfh=fvfh)
 
+    @staticmethod
     def Spline16(fvfh: float = 1.0):
         return rescale.Rescaler(kernel="spline16", fvfh=fvfh)
 
+    @staticmethod
     def Spline36(fvfh: float = 1.0):
         return rescale.Rescaler(kernel="spline36", fvfh=fvfh)
 
+    @staticmethod
     def Spline64(fvfh: float = 1.0):
         return rescale.Rescaler(kernel="spline64", fvfh=fvfh)
 
