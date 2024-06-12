@@ -6189,8 +6189,7 @@ def getnative(
     stats_func: Optional[Callable[[vs.VideoNode, vs.VideoNode], vs.VideoNode]] = None,
     stats_prop: str = "PlaneDiffMeasure",
     src_blurs: Optional[Union[int, float, Sequence[int], Sequence[float]]] = None,
-    ref_src: vs.VideoNode = None,
-    # planeStatsMode: Literal["PlaneStatsAverage", "PlaneMAE", "PlaneRMSE", "PlaneCov","PlaneCorr","PlaneGMSD","PlaneSSIM","PlanePSNR"] = "PlaneStatsAverage",
+    ref_src: vs.VideoNode = None
 ) -> vs.VideoNode:
     """Find the native resolution(s) of upscaled material (mostly anime)
 
@@ -6598,30 +6597,6 @@ def getnative(
             clip = core.std.Loop(clip, len(src_blurs))
 
     stats = stats_func(clip, rescaled)
-
-    # stats = None
-    # if planeStatsMode == "PlaneStatsAverage":
-    #     diff = core.std.Expr([clip, rescaled], [f"x y - abs dup {ex_thr} > swap 0 ?"])
-
-    #     if crop_size > 0:
-    #         diff = core.std.CropRel(diff, *([crop_size] * 4))
-
-    #     stats = core.std.PlaneStats(diff)
-    # elif planeStatsMode == "PlaneCorr":
-    #     stats = mvf.PlaneCompare(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)), mae=False, rmse=False, psnr=False, cov=False, corr=True)
-    # elif planeStatsMode == "PlaneCov":
-    #     stats = mvf.PlaneCompare(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)), mae=False, rmse=False, psnr=False, cov=True, corr=False)
-    # elif planeStatsMode == "PlanePSNR":
-    #     stats = mvf.PlaneCompare(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)), mae=False, rmse=False, psnr=True, cov=False, corr=False)
-    #     # stats = core.complane.PSNR(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)), propname="PlanePSNR")
-    # elif planeStatsMode == "PlaneMAE":
-    #     stats = mvf.PlaneCompare(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)), mae=True, rmse=False, psnr=False, cov=False, corr=False)
-    # elif planeStatsMode == "PlaneRMSE":
-    #     stats = mvf.PlaneCompare(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)), mae=False, rmse=True, psnr=False, cov=False, corr=False)
-    # elif planeStatsMode == "PlaneGMSD":
-    #     stats = GMSD(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)))
-    # elif planeStatsMode == "PlaneSSIM":
-    #     stats = SSIM(clip.std.CropRel(*([crop_size] * 4)), rescaled.std.CropRel(*([crop_size] * 4)))
 
     return output_statistics(stats, rescalers, src_heights, mode, dark, src_blurs)
 
