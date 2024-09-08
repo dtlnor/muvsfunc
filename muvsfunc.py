@@ -6147,6 +6147,8 @@ def measurediff(
 
         ex_thr: (float) Threshold for excluding little difference in calculation
             Default is 0.015.
+
+    Return: The same clip as clip1 with the frameprop named in "propname".
     '''
 
     assert isinstance(norm_order, int) and norm_order > 0
@@ -6162,17 +6164,13 @@ def measurediff(
 
     try:
         diff_moment = core.akarin.PropExpr(diff_moment, lambda: {propname: f"x.PlaneStatsAverage {1 / norm_order} pow"})
-        return core.std.RemoveFrameProps(diff_moment, [f"PlaneStats{s}" for s in ("Average", "Max", "Min")])
+        return core.std.CopyFrameProps(clip1, diff_moment, propname)
     except Exception:
         def calc_norm(n: int, f: vs.VideoFrame):
             fout = f.copy()
             fout.props[propname] = f.props["PlaneStatsAverage"] ** (1 / norm_order)
-            del fout.props["PlaneStatsAverage"]
-            del fout.props["PlaneStatsMax"]
-            del fout.props["PlaneStatsMin"]
             return fout
-
-        return core.std.ModifyFrame(clip=diff_moment, clips=diff_moment, selector=calc_norm)
+        return core.std.CopyFrameProps(clip1, core.std.ModifyFrame(clip=diff_moment, clips=diff_moment, selector=calc_norm), propname)
 
 
 def getnative(
@@ -6315,6 +6313,7 @@ def getnative(
 
     import logging
     logging.getLogger('matplotlib').setLevel(logging.WARNING)
+    import numpy
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
