@@ -6184,7 +6184,9 @@ def getnative(
     stats_func: Optional[Callable[[vs.VideoNode, vs.VideoNode], vs.VideoNode]] = None,
     stats_prop: str = "PlaneDiffMeasure",
     src_blurs: Optional[Union[int, float, Sequence[int], Sequence[float]]] = None,
-    ds_ref: vs.VideoNode = None
+    ds_ref: vs.VideoNode = None,    
+    preflt: Optional[Callable[[vs.VideoNode], vs.VideoNode]] = None,
+    invs_preflt: Optional[Callable[[vs.VideoNode], vs.VideoNode]] = None
 ) -> vs.VideoNode:
     """Find the native resolution(s) of upscaled material (mostly anime)
 
@@ -6362,6 +6364,8 @@ def getnative(
     elif len(src_blurs) > 1:
         mode = Mode.MULTI_BLUR
         assert clip.num_frames == 1 and len(src_heights) == 1 and len(rescalers) == 1, "1-frame clip and 1 src_height and 1 rescaler shoule be passed for multi blur mode."
+    
+    assert (preflt is None == invs_preflt is None), "preflt and invs_preflt should be passed together."
 
     def output_statistics(clip: vs.VideoNode, rescalers: List[rescale.Rescaler], src_heights: Sequence[int], mode: Mode, dark: bool, src_blurs: Sequence[float]) -> vs.VideoNode:
         data = [0] * clip.num_frames
@@ -6497,6 +6501,9 @@ def getnative(
             return filename
 
     # process
+    src_clip = clip
+    if preflt is not None:
+        clip = preflt(src_clip)
     if mode == Mode.MULTI_FRAME:
         src_height = src_heights[0]
         rescaler = rescalers[0]
@@ -6509,7 +6516,7 @@ def getnative(
         rescaler = rescalers[0]
         src_blur = src_blurs[0]
         if rt_eval:
-            clip = core.std.Loop(clip, len(src_heights))
+            src_clip = core.std.Loop(src_clip, len(src_heights))
             if not vertical_only:
                 rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale(clip, src_heights[n], base_height, src_blur=src_blur, ds_ref=ds_ref))  # type: ignore
             else:
@@ -6519,12 +6526,12 @@ def getnative(
                 rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, src_blur=src_blur, ds_ref=ds_ref) for src_height in src_heights])  # type: ignore
             else:
                 rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, src_blur=src_blur, ds_ref=ds_ref) for src_height in src_heights])  # type: ignore
-            clip = core.std.Loop(clip, len(src_heights))
+            src_clip = core.std.Loop(src_clip, len(src_heights))
     elif mode == Mode.MULTI_KERNEL:
         src_height = src_heights[0]
         src_blur = src_blurs[0]
         if rt_eval:
-            clip = core.std.Loop(clip, len(rescalers))
+            src_clip = core.std.Loop(src_clip, len(rescalers))
             if not vertical_only:
                 rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescalers[n].rescale(clip, src_height, base_height, src_blur=src_blur, ds_ref=ds_ref))  # type: ignore
             else:
@@ -6534,12 +6541,12 @@ def getnative(
                 rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, src_blur=src_blur, ds_ref=ds_ref) for rescaler in rescalers])  # type: ignore
             else:
                 rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, src_blur=src_blur, ds_ref=ds_ref) for rescaler in rescalers])  # type: ignore
-            clip = core.std.Loop(clip, len(rescalers))
+            src_clip = core.std.Loop(src_clip, len(rescalers))
     elif mode == Mode.MULTI_BLUR:
         src_height = src_heights[0]
         rescaler = rescalers[0]
         if rt_eval:
-            clip = core.std.Loop(clip, len(src_blurs))
+            src_clip = core.std.Loop(src_clip, len(src_blurs))
             if not vertical_only:
                 rescaled = core.std.FrameEval(clip, lambda n, clip=clip: rescaler.rescale(clip, src_height, base_height, src_blur=src_blurs[n], ds_ref=ds_ref))  # type: ignore
             else:
@@ -6549,9 +6556,9 @@ def getnative(
                 rescaled = core.std.Splice([rescaler.rescale(clip, src_height, base_height, src_blur=src_blur, ds_ref=ds_ref) for src_blur in src_blurs])  # type: ignore
             else:
                 rescaled = core.std.Splice([rescaler.rescale_pro(clip, src_height = src_height, base_height = base_height, src_blur=src_blur, ds_ref=ds_ref) for src_blur in src_blurs])  # type: ignore
-            clip = core.std.Loop(clip, len(src_blurs))
+            src_clip = core.std.Loop(src_clip, len(src_blurs))
 
-    stats = stats_func(clip, rescaled)
+    stats = stats_func(src_clip, rescaled if invs_preflt is None else invs_preflt(rescaled))
 
     return output_statistics(stats, rescalers, src_heights, mode, dark, src_blurs)
 
