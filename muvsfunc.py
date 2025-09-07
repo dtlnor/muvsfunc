@@ -434,7 +434,7 @@ def InDeflate(input: vs.VideoNode, msmooth: Union[int, Sequence[int]] = 0,
         planes = [planes]
 
     if isinstance(msmooth, int):
-        msmoooth = [msmooth]
+        msmooth = [msmooth]
 
     # internel function
     def InDeflate_process(input: vs.VideoNode, radius: int,
@@ -3766,7 +3766,7 @@ def SSIM_downsample(clip: vs.VideoNode, w: int, h: int, smooth: Union[float, VSF
     sl_plus_m_square = Filter(core.std.Expr([l], ['x dup *']))
     sh_plus_m_square = Filter(l2)
     m_square = core.std.Expr([m], ['x dup *'])
-    r = core.std.Expr([sl_plus_m_square, sh_plus_m_square, m_square], ['x z - {eps} < 0 y z - x z - / sqrt ?'.format(eps=epsilon)])
+    r = core.std.Expr([sl_plus_m_square, sh_plus_m_square, m_square], ['x z - {eps} < 0 y z - 0 max x z - / sqrt ?'.format(eps=epsilon)])
     t = Filter(core.std.Expr([r, m], ['x y *']))
     m = Filter(m)
     r = Filter(r)
